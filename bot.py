@@ -2,7 +2,8 @@ import os
 import json
 import logging
 import time
-import requests
+import cloudscraper
+import requests  # оставляем для отправки в Telegram
 from datetime import datetime, timezone, timedelta
 
 # ---------- НАСТРОЙКИ ----------
@@ -55,13 +56,15 @@ def fetch_madlan_listings():
         'roomsTo': MAX_ROOMS,
     }
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Referer': 'https://www.madlan.co.il/',
     }
+    # Используем cloudscraper для обхода Cloudflare
+    scraper = cloudscraper.create_scraper()
     logger.info('Отправляю GET-запрос к %s', url)
     try:
-        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        resp = scraper.get(url, params=params, headers=headers, timeout=15)
         resp.raise_for_status()
 
         start_marker = 'window.__SSR_HYDRATED_CONTEXT__='
@@ -107,7 +110,6 @@ def save_sent_ids(ids_set):
         json.dump(list(ids_set), f)
 
 def format_price(price):
-    """Форматирует цену с разделителями разрядов: 1 500 000"""
     if isinstance(price, (int, float)):
         return f'{price:,.0f}'.replace(',', ' ')
     return str(price)
@@ -130,21 +132,17 @@ def build_message(item):
 
 def main():
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        logger.error('TELEGRAM_TOKEN или CHAT_ID не заданы. Установите переменные окружения!')
+        logger.error('TELEGRAM_TOKEN или CHAT_ID не заданы.')
         return
 
-    # Проверка времени активности
-   # if not is_active_hours():
-    #    logger.info('Сейчас неактивное время (по Израилю), завершаю работу')
-     #   return
-
-    # Тестовое сообщение только один раз при старте (можно убрать после отладки)
-    # tg_send_message('Запуск агента Madlan. Начинаю поиск...')
+    # Для теста можно временно отключить проверку, закомментировав следующие три строки:
+    # if not is_active_hours():
+    #     logger.info('Сейчас неактивное время (по Израилю), завершаю работу')
+    #     return
 
     sent_ids = load_sent_ids()
     items = fetch_madlan_listings()
 
-    # Фильтрация
     filtered = []
     for item in items:
         price = item.get('price')
@@ -152,12 +150,10 @@ def main():
         if price is None or price == 0:
             continue
         if price > MAX_PRICE:
-            logger.info('Пропущено (цена %s > %s): %s', price, MAX_PRICE, item.get('address'))
             continue
         if beds is None:
             continue
         if beds < MIN_ROOMS or beds > MAX_ROOMS:
-            logger.info('Пропущено (комнаты %s вне %s-%s): %s', beds, MIN_ROOMS, MAX_ROOMS, item.get('address'))
             continue
         filtered.append(item)
 
