@@ -1,0 +1,42 @@
+name: Madlan Real Estate Agent
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # каждый час
+  workflow_dispatch:
+
+jobs:
+  run_scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore sent_ids cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: sent_ids.json
+          key: madlan-sent-ids-${{ github.run_id }}
+          restore-keys: madlan-sent-ids-
+
+      - name: Run Madlan Agent
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python bot.py
+
+      - name: Save sent_ids cache
+        if: success()
+        uses: actions/cache@v4
+        with:
+          path: sent_ids.json
+          key: madlan-sent-ids-${{ github.run_id }}
